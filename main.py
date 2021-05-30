@@ -273,9 +273,12 @@ async def run(address, command_to_run=None, is_verbose=True):
             log.warning(colored("{}: {}".format(sender, data.hex()), "green"))
 
         caminfo = PrettyTable()
-        caminfo.field_names = [colored("Info", "cyan", attrs=["bold", "underline"]), colored(
-            "Value", "green", attrs=["bold", "underline"])]
+        caminfo.field_names = [
+            colored("Info", "cyan", attrs=["bold", "underline"]),
+            colored("Value", "green", attrs=["bold", "underline"])
+        ]
         caminfo.align = "l"
+
         for service in client.services:
             for char in service.characteristics:
                 if "read" in char.properties:
@@ -284,37 +287,57 @@ async def run(address, command_to_run=None, is_verbose=True):
                     try:
                         value = bytes(await client.read_gatt_char(char.uuid))
                         valueinutf = value.decode("utf-8")
+
                         if char.uuid == "00002a19-0000-1000-8000-00805f9b34fb":
                             valueinutf = str(ord(value)) + "%"
-                        caminfo.add_row([colored(camera_info_chars[char.uuid].get(
-                            "name"), "cyan"), colored(valueinutf, "green")])
+
+                        caminfo.add_row([
+                            colored(
+                                camera_info_chars[char.uuid].get("name"),
+                                "cyan"
+                            ),
+                            colored(valueinutf, "green")]
+                        )
                     except Exception:
                         continue
         if is_verbose:
             print(caminfo)
 
-        await client.start_notify(commands.Characteristics.CommandNotifications, callback)
-        await client.start_notify(commands.Characteristics.SettingNotifications, callback)
+        await client.start_notify(
+            commands.Characteristics.CommandNotifications, callback
+        )
+        await client.start_notify(
+            commands.Characteristics.SettingNotifications, callback
+        )
 
         if await client.is_connected():
             log.info("Camera is connected")
+
         if command_to_run is None:
-            await client.write_gatt_char(commands.Characteristics.ControlCharacteristic, start_mode)
+            await client.write_gatt_char(
+                commands.Characteristics.ControlCharacteristic, start_mode
+            )
+
         await asyncio.sleep(1.0)
         signal.signal(signal.SIGINT, handle_exit)
 
         if command_to_run is not None:
             if command_to_run in commands_supported["command"]:
-                await client.write_gatt_char(commands.Characteristics.ControlCharacteristic, commands_supported["command"][command_to_run].get("value"))
-
+                await client.write_gatt_char(
+                    commands.Characteristics.ControlCharacteristic,
+                    commands_supported["command"][command_to_run].get("value")
+                )
             elif command_to_run.startswith("cmd"):
-                await client.write_gatt_char(commands.Characteristics.ControlCharacteristic,
-                                             bytearray(command_to_run.split("cmd")[1].encode()))
+                await client.write_gatt_char(
+                    commands.Characteristics.ControlCharacteristic,
+                    bytearray(command_to_run.split("cmd")[1].encode())
+                )
             elif command_to_run.startswith("set"):
-
                 if len(command_to_run.strip().split(" ")) != 4:
                     log.error(
-                        "Bad syntax. Should be: set [video/photo/multishot/setup] [setting key] [value]")
+                        "Bad syntax. Should be: set "
+                        "[video/photo/multishot/setup] [setting key] [value]"
+                    )
 
                 first = 0
                 contents = None
@@ -324,7 +347,8 @@ async def run(address, command_to_run=None, is_verbose=True):
                 key = command_to_run.split(" ")[2]
                 val = command_to_run.split(" ")[3]
 
-                if section in settings_supported and key in settings_supported[section]:
+                if section in settings_supported and \
+                   key in settings_supported[section]:
                     first = settings_supported[section][key]["first"]
                     contents = settings_supported[section][key]["contents"]
                     prefix = settings_supported[section][key]["prefix"]
@@ -333,32 +357,44 @@ async def run(address, command_to_run=None, is_verbose=True):
                     command = "\x03" + \
                         chr(int(first)) + "\x01" + \
                         chr(int(eval(contents + "." + prefix + val)))
-                    await client.write_gatt_char(commands.Characteristics.SettingCharacteristic, bytearray(command.encode()))
+
+                    await client.write_gatt_char(
+                        commands.Characteristics.SettingCharacteristic,
+                        bytearray(command.encode())
+                    )
                 except Exception:
                     log.error("Bad settings combination.")
             else:
                 log.error("Unrecognized command %s" % command_to_run)
             return
-        while True:
 
+        while True:
             cmd = input(">> ")
+
             if cmd == "exit":
                 exit()
             elif cmd == "help":
                 print("Supported commands")
+
                 for command in commands_supported["command"].keys():
                     print(colored("\t" + command, "yellow"))
             elif cmd in commands_supported["command"]:
-                await client.write_gatt_char(commands.Characteristics.ControlCharacteristic, commands_supported["command"][cmd].get("value"))
+                await client.write_gatt_char(
+                    commands.Characteristics.ControlCharacteristic,
+                    commands_supported["command"][cmd].get("value")
+                )
 
             elif cmd.startswith("cmd"):
-                await client.write_gatt_char(commands.Characteristics.ControlCharacteristic,
-                                             bytearray(cmd.split("cmd")[1].encode()))
+                await client.write_gatt_char(
+                    commands.Characteristics.ControlCharacteristic,
+                    bytearray(cmd.split("cmd")[1].encode())
+                )
             elif cmd.startswith("set"):
-
                 if len(cmd.strip().split(" ")) != 4:
                     log.error(
-                        "Bad syntax. Should be: set [video/photo/multishot/setup] [setting key] [value]")
+                        "Bad syntax. Should be: set "
+                        "[video/photo/multishot/setup] [setting key] [value]"
+                    )
 
                 first = 0
                 contents = None
@@ -368,7 +404,8 @@ async def run(address, command_to_run=None, is_verbose=True):
                 key = cmd.split(" ")[2]
                 val = cmd.split(" ")[3]
 
-                if section in settings_supported and key in settings_supported[section]:
+                if section in settings_supported and \
+                   key in settings_supported[section]:
                     first = settings_supported[section][key]["first"]
                     contents = settings_supported[section][key]["contents"]
                     prefix = settings_supported[section][key]["prefix"]
@@ -377,7 +414,11 @@ async def run(address, command_to_run=None, is_verbose=True):
                     command = "\x03" + \
                         chr(int(first)) + "\x01" + \
                         chr(int(eval(contents + "." + prefix + val)))
-                    await client.write_gatt_char(commands.Characteristics.SettingCharacteristic, bytearray(command.encode()))
+
+                    await client.write_gatt_char(
+                        commands.Characteristics.SettingCharacteristic,
+                        bytearray(command.encode())
+                    )
                 except Exception:
                     log.error("Bad settings combination.")
             else:
@@ -386,23 +427,32 @@ async def run(address, command_to_run=None, is_verbose=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--interactive', "-i", help="Interactive control shell",
-                        required=False, type=bool, default=True)
-    parser.add_argument('--address', "-a", help="Camera BLE HW address",
-                        required=False, default=[], action="append", nargs="+")
     parser.add_argument(
-        '--command', "-c", help="Execute command, overrides `-i`", required=False, type=str)
+        '--interactive', "-i", help="Interactive control shell",
+        required=False, type=bool, default=True
+    )
     parser.add_argument(
-        '--from-file', "-f", help="Execute instructions from file", required=False, default="")
+        '--address', "-a", help="Camera BLE HW address",
+        required=False, default=[], action="append", nargs="+"
+    )
+    parser.add_argument(
+        '--command', "-c", help="Execute command, overrides `-i`",
+        required=False, type=str
+    )
+    parser.add_argument(
+        '--from-file', "-f", help="Execute instructions from file",
+        required=False, default=""
+    )
     parser.add_argument('--verbose', dest='verbose', action='store_true')
     parser.add_argument('--no-verbose', dest='verbose', action='store_false')
     parser.set_defaults(verbose=True)
+
     args = parser.parse_args()
 
     command_to_run = None
     is_verbose = args.verbose
-    if args.address == []:
 
+    if args.address == []:
         async def discovercameras():
             cameras = []
             devices = await discover()
@@ -420,8 +470,11 @@ if __name__ == "__main__":
                 address = [cameras[0][1]]
             else:
                 for index, i in enumerate(cameras):
-                    print(
-                        colored("[{}] {} - {}".format(index, i[0], i[1]), "cyan"))
+                    print(colored(
+                        "[{}] {} - {}".format(index, i[0], i[1]),
+                        "cyan"
+                    ))
+
                 address = [cameras[int(input(">>> "))][1]]
 
         loop = asyncio.get_event_loop()
@@ -433,10 +486,15 @@ if __name__ == "__main__":
         args.interactive = False
     if args.interactive:
         command_to_run = None
+
         if len(address) > 1:
             print("Only one camera supported in interactive mode")
             exit()
+
     loop = asyncio.get_event_loop()
     loop.set_debug(False)
-    tasks = asyncio.gather(*(run(add, command_to_run, is_verbose) for add in address))
+
+    tasks = asyncio.gather(
+        *(run(add, command_to_run, is_verbose) for add in address)
+    )
     loop.run_until_complete(tasks)
