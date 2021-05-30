@@ -8,6 +8,7 @@ import argparse
 import signal
 from prettytable import PrettyTable
 from goprocam import constants
+import socket
 
 camera_info_chars = {"00002a00-0000-1000-8000-00805f9b34fb": {
     "name": "Camera ID"
@@ -368,61 +369,44 @@ async def run(address, command_to_run=None, is_verbose=True):
                 log.error("Unrecognized command %s" % command_to_run)
             return
 
-        while True:
-            cmd = input(">> ")
+        async def toggle_playback(state):
+            await client.write_gatt_char(
+                commands.Characteristics.ControlCharacteristic,
+                commands_supported["command"][f"record {state}"].get("value")
+            )
 
-            if cmd == "exit":
-                exit()
-            elif cmd == "help":
-                print("Supported commands")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+            server.bind(("0.0.0.0", 12347))
+            server.listen()
 
-                for command in commands_supported["command"].keys():
-                    print(colored("\t" + command, "yellow"))
-            elif cmd in commands_supported["command"]:
-                await client.write_gatt_char(
-                    commands.Characteristics.ControlCharacteristic,
-                    commands_supported["command"][cmd].get("value")
-                )
+            while True:
+                print("Waiting for clients...")
+                conn, addr = server.accept()
 
-            elif cmd.startswith("cmd"):
-                await client.write_gatt_char(
-                    commands.Characteristics.ControlCharacteristic,
-                    bytearray(cmd.split("cmd")[1].encode())
-                )
-            elif cmd.startswith("set"):
-                if len(cmd.strip().split(" ")) != 4:
-                    log.error(
-                        "Bad syntax. Should be: set "
-                        "[video/photo/multishot/setup] [setting key] [value]"
-                    )
+                with conn:
+                    print("Client connected:", addr)
 
-                first = 0
-                contents = None
-                prefix = ""
+                    while True:
+                        connection_ended = False
+                        line = conn.recv(1024)
 
-                section = cmd.split(" ")[1]
-                key = cmd.split(" ")[2]
-                val = cmd.split(" ")[3]
+                        if len(line) > 0:
+                            print("Message:", line)
 
-                if section in settings_supported and \
-                   key in settings_supported[section]:
-                    first = settings_supported[section][key]["first"]
-                    contents = settings_supported[section][key]["contents"]
-                    prefix = settings_supported[section][key]["prefix"]
+                        for message in line.splitlines():
+                            if message == b"ENABLE":
+                                await toggle_playback("start")
+                            elif message == b"DISABLE":
+                                await toggle_playback("stop")
+                            elif message == b"QUIT":
+                                connection_ended = True
+                                conn.sendall(b"")
+                                break
 
-                try:
-                    command = "\x03" + \
-                        chr(int(first)) + "\x01" + \
-                        chr(int(eval(contents + "." + prefix + val)))
+                            conn.sendall(b"OK\n")
 
-                    await client.write_gatt_char(
-                        commands.Characteristics.SettingCharacteristic,
-                        bytearray(command.encode())
-                    )
-                except Exception:
-                    log.error("Bad settings combination.")
-            else:
-                log.error("Unrecognized command %s" % cmd)
+                        if connection_ended:
+                            break
 
 
 if __name__ == "__main__":
