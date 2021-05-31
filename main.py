@@ -400,7 +400,6 @@ async def run(address, command_to_run=None, is_verbose=True):
                                 await toggle_playback("stop")
                             elif message == b"QUIT":
                                 connection_ended = True
-                                conn.sendall(b"")
                                 break
 
                             conn.sendall(b"OK\n")
